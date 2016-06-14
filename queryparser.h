@@ -23,4 +23,10 @@
 extern NodeTag my_nodeTag(Node* nodeptr);
 //strVal(v)               (((Value *)(v))->val.str)
 char* my_strVal(Node* v);
+long my_intVal(Node* v);
 Node* cellData(ListCell* l);
+
+// extract data from A_Const
+extern NodeTag const_type(Node* val);
+extern long const_to_integer(Node* val);
+extern char* const_to_str(Node* val);

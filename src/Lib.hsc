@@ -31,8 +31,7 @@ someFunc = do
     putStrLn "testing c call"
     print $ msin 1.0
     putStrLn "success"
-    putStrLn "calling postgres memory init"
-    c_MemoryContextInit
-    putStrLn "success"
-    P.parseIt
-
+    let s1 = "select a.aa, a.ab as xyz from a join b on a.x = b.y"
+    let s2 = "select a.aa from a as c join b on c.x = b.y where c.xx = 'abc'"
+    P.parseIt s1
+    P.parseIt s2
