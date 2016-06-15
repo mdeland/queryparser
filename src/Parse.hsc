@@ -192,7 +192,7 @@ runParse s1 = do
     useAsCString (pack s1) $ \s -> do
         let nd = c_raw_parser s
         p <- parse nd
-        let parsed = printQuery p
+        let parsed = formatQuery p
         return parsed
 
 parseIt :: String -> IO ()

@@ -1,4 +1,4 @@
-module PrintQuery where
+module PrintQuery (formatQuery) where
 
 import Control.Monad (when)
 import qualified Control.Monad.State as State
@@ -10,6 +10,11 @@ import Debug.Trace
 import Types
 import CApi
 
+
+formatQuery :: Node -> String
+formatQuery nd = fst $ snd $ State.runState (formatNode nd) ("", 0)
+
+ -- State Helpers
 type Output = (String, Int)
 
 append :: String -> State.State Output ()
@@ -32,56 +37,54 @@ unindent :: State.State Output Int
 unindent = State.state $ \(s, i) -> (i - 1, (s, i - 1))
 
 
-printQuery :: Node -> String
-printQuery nd = fst $ snd $ State.runState (showsNode' nd) ("", 0)
-
-showListNodes :: [Node] -> Bool -> String -> State.State Output ()
-showListNodes (x:y:xs) shouldNewLine intersperse = do
-    showsNode' x
+-- Format Helpers
+formatListNodes :: [Node] -> Bool -> String -> State.State Output ()
+formatListNodes (x:y:xs) shouldNewLine intersperse = do
+    formatNode x
     append intersperse
     when shouldNewLine newline
-    showListNodes (y:xs) shouldNewLine intersperse
-showListNodes [x] _ _ = showsNode' x
-showListNodes [] _ _ = return ()
+    formatListNodes (y:xs) shouldNewLine intersperse
+formatListNodes [x] _ _ = formatNode x
+formatListNodes [] _ _ = return ()
 
 
-showsNode' :: Node -> State.State Output ()
-showsNode' (NodeList nds) = do
-    mapM_ showsNode' nds
+formatNode :: Node -> State.State Output ()
+formatNode (NodeList nds) = do
+    mapM_ formatNode nds
     return ()
-showsNode' UnhandledNode = append "UNHANDLED"
-showsNode' (SelectTarget mAlias val) = do
-    showsNode' val
+formatNode UnhandledNode = append "UNHANDLED"
+formatNode (SelectTarget mAlias val) = do
+    formatNode val
     when (isJust mAlias) $ do
           append " AS "
           append $ fromJust mAlias
           return ()
     return ()
-showsNode' (ColumnRef names) = showListNodes names False "."
+formatNode (ColumnRef names) = formatListNodes names False "."
 
-showsNode' (ConstInt v) = append $ show v
-showsNode' (ConstFloat v) = append $ show v
-showsNode' (ConstString v) = append $ "'" ++ v ++ "'"
-showsNode' (ConstNull) = append "NULL"
+formatNode (ConstInt v) = append $ show v
+formatNode (ConstFloat v) = append $ show v
+formatNode (ConstString v) = append $ "'" ++ v ++ "'"
+formatNode (ConstNull) = append "NULL"
 
-showsNode' (StringNode s) = append s
+formatNode (StringNode s) = append s
 
-showsNode' (FuncCall names args orders filter _ _ _ _) = do
-    mapM_ showsNode' names
+formatNode (FuncCall names args orders filter _ _ _ _) = do
+    mapM_ formatNode names
     append "("
-    mapM_ showsNode' args
+    mapM_ formatNode args
     append ")"
 
-showsNode' (A_Expr exprType _ left right) = do
-    showsNode' left
+formatNode (A_Expr exprType _ left right) = do
+    formatNode left
     append " = "
-    showsNode' right
+    formatNode right
 
-showsNode' (JoinExpr joinType left right mQuals _) = do
-    showsNode' left
+formatNode (JoinExpr joinType left right mQuals _) = do
+    formatNode left
     newline
     append "JOIN "
-    showsNode' right
+    formatNode right
     mapM_ writeQuals mQuals
     return ()
   where
@@ -89,23 +92,23 @@ showsNode' (JoinExpr joinType left right mQuals _) = do
         indent
         newline
         append "ON "
-        showsNode' quals
+        formatNode quals
         unindent
         newline
-showsNode' (TableRef db schema table alias) = do
+formatNode (TableRef db schema table alias) = do
     append $ maybe "" (\d -> d ++ ".") db
     append $ maybe "" (\s -> s ++ ".") schema
     append $ fromMaybe "" table
     append $ maybe "" (\a -> " AS " ++ a) alias
 
-showsNode' A_Star = append "*"
+formatNode A_Star = append "*"
 
 -- TODO handle lateral
-showsNode' (RangeSubselect _ subq mAlias) = do
+formatNode (RangeSubselect _ subq mAlias) = do
     append "("
     indent
     newline
-    showsNode' subq
+    formatNode subq
     unindent
     newline
     append ")"
@@ -115,7 +118,7 @@ showsNode' (RangeSubselect _ subq mAlias) = do
           return ()
 
 
-showsNode' (SelectStmnt targets from mWhere group) = do
+formatNode (SelectStmnt targets from mWhere group) = do
     append "SELECT"
     let needsIndent = length targets > 1
     -- select columns
@@ -140,7 +143,7 @@ showsNode' (SelectStmnt targets from mWhere group) = do
               newline
               append "GROUP BY "
               -- TODO
-              mapM_ showsNode' group
+              mapM_ formatNode group
               return ()
         else return ()
     when (isJust mWhere) $ do
@@ -148,23 +151,23 @@ showsNode' (SelectStmnt targets from mWhere group) = do
                               append "WHERE"
                               indent
                               newline
-                              mapM_ showsNode' mWhere
+                              mapM_ formatNode mWhere
                               unindent
                               return ()
   where
     writeTargets ni (x:y:zs) = do
-        showsNode' x
+        formatNode x
         append ","
         newline
         writeTargets ni (y:zs)
     writeTargets ni [x] = do
-        showsNode' x
+        formatNode x
         when ni $ unindent >>= \_ -> return ()
     writeFroms (x:y:zs) = do
-        showsNode' x
+        formatNode x
         newline
         writeFroms (y:zs)
-    writeFroms [x] = showsNode' x
+    writeFroms [x] = formatNode x
 
-showsNode' nd = append $ "not implemented yet"
+formatNode nd = append $ "not implemented yet"
 
