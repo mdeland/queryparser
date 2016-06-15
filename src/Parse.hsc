@@ -40,6 +40,12 @@ nodeMaybe nm = if (nm == nullPtr)
                   then return Nothing
                   else Just <$> parse nm
 
+nodeMaybeString :: CString -> IO (Maybe String)
+nodeMaybeString nd = if (nd /= nullPtr)
+                        then Just <$> peekCString nd
+                        else return Nothing
+
+
 parse :: Ptr CNode -> IO Node
 parse nd = do
     let tag = c_nodeTag nd
@@ -71,12 +77,8 @@ parse' nd SelectStmntTag = do
 
 parse' nd ResTargetTag = do
     debug "resTarget"
-    cname <- (#{peek ResTarget, name} nd)
-    name <- if (cname == nullPtr)
-                then return Nothing
-                else fmap Just $ peekCString cname
-    valNode <- (#{peek ResTarget, val} nd)
-    val <- parse valNode
+    name <- (#{peek ResTarget, name} nd) >>= nodeMaybeString
+    val <- (#{peek ResTarget, val} nd) >>= parse
     -- TODO will this always return a SelectTarget?
     return $ SelectTarget name val
 
@@ -108,15 +110,13 @@ parse' nd JoinExprTag = do
     let joinType = fromIntegral cjoinType
     debug "join type:"
     debug (show joinType)
-    leftNode <- (#{peek JoinExpr, larg} nd)
-    left <- parse leftNode
-    rightNode <- (#{peek JoinExpr, rarg} nd)
-    right <- parse rightNode
-    qualNode <- (#{peek JoinExpr, quals} nd)
+    left <- (#{peek JoinExpr, larg} nd) >>= parse
+    right <- (#{peek JoinExpr, rarg} nd) >>= parse
     -- TODO optional?
     -- TODO extractList from qual here??
-    qual <- parse qualNode
+    qual <- (#{peek JoinExpr, quals} nd) >>= parse
     -- TODO Alias
+
     return $ JoinExpr joinType left right (Just qual) Nothing
 
 parse' nd FuncCallTag = do
@@ -147,19 +147,10 @@ parse' nd RangeSubselectTag = do
 
 parse' nd RangeVarTag = do
     debug "table"
-    cdb <- (#{peek RangeVar, catalogname} nd) :: IO CString
-    cschema <- (#{peek RangeVar, schemaname} nd) :: IO CString
-    ctable <- (#{peek RangeVar, relname} nd) :: IO CString
+    db <- (#{peek RangeVar, catalogname} nd) >>= nodeMaybeString
+    schema <- (#{peek RangeVar, schemaname} nd) >>= nodeMaybeString
+    table <- (#{peek RangeVar, relname} nd) >>= nodeMaybeString
     aliasNode <- (#{peek RangeVar, alias} nd)
-    db <- if (cdb /= nullPtr)
-      then Just <$> peekCString cdb
-      else return Nothing
-    schema <- if (cschema /= nullPtr)
-      then Just <$> peekCString cschema
-      else return Nothing
-    table <- if (ctable /= nullPtr)
-      then Just <$> peekCString ctable
-      else return Nothing
     alias <- if (aliasNode /= nullPtr)
       then do
               calias <- (#{peek Alias, aliasname} aliasNode) :: IO CString
@@ -181,9 +172,7 @@ parse' nd A_ExprTag = do
 parse' nd AliasTag = do
     calias <- (#{peek Alias, aliasname} nd)
     alias <- peekCString calias
-
-    colNode <- (#{peek Alias, colnames} nd)
-    cols <- nodeMaybe colNode
+    cols <- (#{peek Alias, colnames} nd) >>= nodeMaybe
 
     return $ Alias alias cols
 
