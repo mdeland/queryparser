@@ -1,6 +1,7 @@
 module PrintQuery (formatQuery) where
 
-import Control.Monad (when)
+import Control.Monad (when, unless)
+import qualified Control.Monad as CM
 import qualified Control.Monad.State as State
 import qualified Data.Text as T
 import qualified Data.List as L
@@ -46,6 +47,18 @@ formatListNodes (x:y:xs) shouldNewLine intersperse = do
     formatListNodes (y:xs) shouldNewLine intersperse
 formatListNodes [x] _ _ = formatNode x
 formatListNodes [] _ _ = return ()
+
+formatIndentedList :: [Node] -> String -> State.State Output ()
+formatIndentedList nds intersperse = do
+    let needsIndent = length nds > 1
+    if needsIndent
+        then do
+            indent
+            newline
+            return ()
+        else append " "
+    formatListNodes nds True intersperse
+    when needsIndent (CM.void unindent)
 
 
 formatNode :: Node -> State.State Output ()
@@ -120,54 +133,27 @@ formatNode (RangeSubselect _ subq mAlias) = do
 
 formatNode (SelectStmnt targets from mWhere group) = do
     append "SELECT"
-    let needsIndent = length targets > 1
     -- select columns
-    if needsIndent
-        then do
-            indent
-            newline
-            return ()
-        else append " "
-    writeTargets needsIndent targets
+    formatIndentedList targets ","
 
-    -- from clause
-    if (length from) > 0
-        then do
-            newline
-            append "FROM "
-            writeFroms from
-            return ()
-        else return ()
-    if (length group) > 0
-        then do
-              newline
-              append "GROUP BY "
-              -- TODO
-              mapM_ formatNode group
-              return ()
-        else return ()
+    unless (null from) $ do
+                                newline
+                                append "FROM"
+                                formatIndentedList from ","
+                                return ()
+    unless (null group) $ do
+                                newline
+                                append "GROUP BY"
+                                formatIndentedList group ","
+                                return ()
     when (isJust mWhere) $ do
-                              newline
-                              append "WHERE"
-                              indent
-                              newline
-                              mapM_ formatNode mWhere
-                              unindent
-                              return ()
-  where
-    writeTargets ni (x:y:zs) = do
-        formatNode x
-        append ","
-        newline
-        writeTargets ni (y:zs)
-    writeTargets ni [x] = do
-        formatNode x
-        when ni $ unindent >>= \_ -> return ()
-    writeFroms (x:y:zs) = do
-        formatNode x
-        newline
-        writeFroms (y:zs)
-    writeFroms [x] = formatNode x
+                                newline
+                                append "WHERE"
+                                indent
+                                newline
+                                mapM_ formatNode mWhere
+                                unindent
+                                return ()
 
 formatNode nd = append $ "not implemented yet"
 
