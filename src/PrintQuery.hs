@@ -5,6 +5,7 @@ import qualified Control.Monad.State as State
 import qualified Data.Text as T
 import qualified Data.List as L
 import Data.Maybe
+import Debug.Trace
 
 import Types
 import CApi
@@ -34,6 +35,16 @@ unindent = State.state $ \(s, i) -> (i - 1, (s, i - 1))
 printQuery :: Node -> String
 printQuery nd = fst $ snd $ State.runState (showsNode' nd) ("", 0)
 
+showListNodes :: [Node] -> Bool -> String -> State.State Output ()
+showListNodes (x:y:xs) shouldNewLine intersperse = do
+    showsNode' x
+    append intersperse
+    when shouldNewLine newline
+    showListNodes (y:xs) shouldNewLine intersperse
+showListNodes [x] _ _ = showsNode' x
+showListNodes [] _ _ = return ()
+
+
 showsNode' :: Node -> State.State Output ()
 showsNode' (NodeList nds) = do
     mapM_ showsNode' nds
@@ -46,7 +57,7 @@ showsNode' (SelectTarget mAlias val) = do
           append $ fromJust mAlias
           return ()
     return ()
-showsNode' (ColumnRef names) = append (L.intercalate "." names)
+showsNode' (ColumnRef names) = showListNodes names False "."
 
 showsNode' (ConstInt v) = append $ show v
 showsNode' (ConstFloat v) = append $ show v
@@ -86,6 +97,24 @@ showsNode' (TableRef db schema table alias) = do
     append $ maybe "" (\s -> s ++ ".") schema
     append $ fromMaybe "" table
     append $ maybe "" (\a -> " AS " ++ a) alias
+
+showsNode' A_Star = append "*"
+
+-- TODO handle lateral
+showsNode' (RangeSubselect _ subq mAlias) = do
+    append "("
+    indent
+    newline
+    showsNode' subq
+    unindent
+    newline
+    append ")"
+    when (isJust mAlias) $ do
+          append " AS "
+          append $ fromJust mAlias
+          return ()
+
+
 showsNode' (SelectStmnt targets from mWhere group) = do
     append "SELECT"
     let needsIndent = length targets > 1
@@ -115,12 +144,13 @@ showsNode' (SelectStmnt targets from mWhere group) = do
               return ()
         else return ()
     when (isJust mWhere) $ do
+                              newline
                               append "WHERE"
                               indent
                               newline
                               mapM_ showsNode' mWhere
                               unindent
-                              newline
+                              return ()
   where
     writeTargets ni (x:y:zs) = do
         showsNode' x
@@ -134,8 +164,7 @@ showsNode' (SelectStmnt targets from mWhere group) = do
         showsNode' x
         newline
         writeFroms (y:zs)
-    writeFroms [x] = do
-        showsNode' x
+    writeFroms [x] = showsNode' x
 
 showsNode' nd = append $ "not implemented yet"
 

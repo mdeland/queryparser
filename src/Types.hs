@@ -53,7 +53,7 @@ data Node =
         -- TODO windowdef
       -- These are TableColumn
     | SelectTarget (Maybe String) Node
-    | ColumnRef [String]
+    | ColumnRef [Node]
     | TableRef
         (Maybe String) -- db
         (Maybe String) -- schema
@@ -64,6 +64,11 @@ data Node =
     | ConstFloat Float
     | ConstString String
     | ConstNull
+    | A_Star
+    | RangeSubselect
+        Bool           -- lateral
+        Node           -- subquery
+        (Maybe String) -- alias
     | A_Expr
         Int -- type TODO enum this
         Node -- List

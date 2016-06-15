@@ -26,13 +26,14 @@ import Debug.Trace
 #include "nodes/value.h"
 
 debug :: String -> IO ()
--- debug s = traceIO $ "***** " ++ s
-debug _ = return ()
+debug s = traceIO $ "***** " ++ s
+-- debug _ = return ()
 
 nodeList :: Ptr CNode -> IO [Node]
-nodeList nl = if (nl == nullPtr)
-                  then return []
-                  else extractList <$> parse nl
+nodeList nl = do
+    if (nl == nullPtr)
+        then return []
+        else extractList <$> parse nl
 
 nodeMaybe :: Ptr CNode -> IO (Maybe Node)
 nodeMaybe nm = if (nm == nullPtr)
@@ -80,14 +81,8 @@ parse' nd ResTargetTag = do
     return $ SelectTarget name val
 
 parse' nd ColumnRefTag = do
-    fieldsNode <- (#{peek ColumnRef, fields} nd)
-    fields <- extractList <$> parse fieldsNode
-    -- TODO what else can happen here??
-    let fieldStrings = extractString <$> fields
-    return $ ColumnRef $ fieldStrings
-  where
-    extractString (StringNode s) = s
-    extractString _ = undefined
+    fieldsNode <- (#{peek ColumnRef, fields} nd) >>= nodeList
+    return $ ColumnRef fieldsNode
 
 parse' nd StringTag = do
     str <- peekCString $ c_strVal nd
@@ -137,6 +132,18 @@ parse' nd FuncCallTag = do
     -- TODO WindowDef
     return $ FuncCall funcName args aggOrder aggFilter withinGroup aggStar aggDistinct variadic
 
+parse' nd A_StarTag = return A_Star
+
+parse' nd RangeSubselectTag = do
+    lateral <- (#{peek RangeSubselect, lateral} nd)
+    subquery <- (#{peek RangeSubselect, subquery} nd) >>= parse
+    aliasNode <- (#{peek RangeSubselect, alias} nd)
+    alias <- if (aliasNode /= nullPtr)
+        then do
+                calias <- (#{peek Alias, aliasname} aliasNode) :: IO CString
+                Just <$> peekCString calias
+        else return Nothing
+    return $ RangeSubselect lateral subquery alias
 
 parse' nd RangeVarTag = do
     debug "table"
@@ -188,7 +195,7 @@ parse' _ t = do
 
 extractList :: Node -> [Node]
 extractList (NodeList nd) = nd
-extractList _ = undefined
+extractList _ = trace "extractList undefined" $ undefined
 
 runParse :: String -> IO String
 runParse s1 = do
