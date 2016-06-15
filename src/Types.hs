@@ -41,6 +41,16 @@ data Node =
         (Maybe Node) -- qualfiers
         (Maybe Node) -- alias
 
+    | FuncCall
+        [Node] -- names
+        [Node] -- args
+        [Node] --- agg order
+        (Maybe Node) -- filter
+        Bool -- withinGroup
+        Bool -- star
+        Bool -- distinct
+        Bool -- variadic
+        -- TODO windowdef
       -- These are TableColumn
     | SelectTarget (Maybe String) Node
     | ColumnRef [String]

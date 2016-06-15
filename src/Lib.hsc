@@ -33,5 +33,7 @@ someFunc = do
     putStrLn "success"
     let s1 = "select a.aa, a.ab as xyz from a join b on a.x = b.y"
     let s2 = "select a.aa from a as c join b on c.x = b.y where c.xx = 'abc'"
+    let s3 = "select x, sum(y) from z group by 1"
     P.parseIt s1
     P.parseIt s2
+    P.parseIt s3

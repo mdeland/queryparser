@@ -29,6 +29,15 @@ debug :: String -> IO ()
 -- debug s = traceIO $ "***** " ++ s
 debug _ = return ()
 
+nodeList :: Ptr CNode -> IO [Node]
+nodeList nl = if (nl == nullPtr)
+                  then return []
+                  else extractList <$> parse nl
+
+nodeMaybe :: Ptr CNode -> IO (Maybe Node)
+nodeMaybe nm = if (nm == nullPtr)
+                  then return Nothing
+                  else Just <$> parse nm
 
 parse :: Ptr CNode -> IO Node
 parse nd = do
@@ -52,19 +61,12 @@ parse' nd ListTag = do
           else return newList
 
 parse' nd SelectStmntTag = do
-    targetCNode <- (#{peek SelectStmt, targetList} nd)
-    targetNode <- extractList <$> parse targetCNode
+    targetNode <- (#{peek SelectStmt, targetList} nd) >>= nodeList
+    fromNode <- (#{peek SelectStmt, fromClause} nd) >>= nodeList
+    whereNode <- (#{peek SelectStmt, whereClause} nd) >>= nodeMaybe
+    groupNode <- (#{peek SelectStmt, groupClause} nd) >>= nodeList
 
-    fromCNode <- (#{peek SelectStmt, fromClause} nd)
-    fromNode <- extractList <$> parse fromCNode
-
-    debug "where"
-    whereCNode <- (#{peek SelectStmt, whereClause} nd)
-    whereNode <- if (whereCNode == nullPtr)
-                    then return Nothing
-                    else Just <$> parse whereCNode
-
-    return $ SelectStmnt targetNode fromNode whereNode []
+    return $ SelectStmnt targetNode fromNode whereNode groupNode
 
 parse' nd ResTargetTag = do
     debug "resTarget"
@@ -73,7 +75,6 @@ parse' nd ResTargetTag = do
                 then return Nothing
                 else fmap Just $ peekCString cname
     valNode <- (#{peek ResTarget, val} nd)
-    debug "parsing valNode"
     val <- parse valNode
     -- TODO will this always return a SelectTarget?
     return $ SelectTarget name val
@@ -90,7 +91,6 @@ parse' nd ColumnRefTag = do
 
 parse' nd StringTag = do
     str <- peekCString $ c_strVal nd
-    debug str
     return $ StringNode str
 
 parse' nd A_ConstTag = do
@@ -123,6 +123,20 @@ parse' nd JoinExprTag = do
     qual <- parse qualNode
     -- TODO Alias
     return $ JoinExpr joinType left right (Just qual) Nothing
+
+parse' nd FuncCallTag = do
+    debug "func"
+    funcName <- (#{peek FuncCall, funcname} nd) >>= nodeList
+    args <- (#{peek FuncCall, args} nd) >>= nodeList
+    aggOrder <- (#{peek FuncCall, agg_order} nd) >>= nodeList
+    aggFilter <- (#{peek FuncCall, agg_filter} nd) >>= nodeMaybe
+    withinGroup <- (#{peek FuncCall, agg_within_group} nd) -- bool
+    aggStar <- (#{peek FuncCall, agg_star} nd)             -- bool
+    aggDistinct <- (#{peek FuncCall, agg_distinct} nd)     -- bool
+    variadic <- (#{peek FuncCall, func_variadic} nd)       -- bool
+    -- TODO WindowDef
+    return $ FuncCall funcName args aggOrder aggFilter withinGroup aggStar aggDistinct variadic
+
 
 parse' nd RangeVarTag = do
     debug "table"
@@ -160,10 +174,10 @@ parse' nd A_ExprTag = do
 parse' nd AliasTag = do
     calias <- (#{peek Alias, aliasname} nd)
     alias <- peekCString calias
+
     colNode <- (#{peek Alias, colnames} nd)
-    cols <- if (colNode /= nullPtr)
-      then Just <$> parse colNode
-      else return Nothing
+    cols <- nodeMaybe colNode
+
     return $ Alias alias cols
 
 parse' _ t = do

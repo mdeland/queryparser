@@ -41,20 +41,25 @@ showsNode' (NodeList nds) = do
 showsNode' UnhandledNode = append "UNHANDLED"
 showsNode' (SelectTarget mAlias val) = do
     showsNode' val
-    if (isJust mAlias)
-      then do
-          append $ " AS "
+    when (isJust mAlias) $ do
+          append " AS "
           append $ fromJust mAlias
           return ()
-      else return ()
     return ()
-showsNode' (ColumnRef names) = do
-    append (L.intercalate "." names)
+showsNode' (ColumnRef names) = append (L.intercalate "." names)
 
 showsNode' (ConstInt v) = append $ show v
 showsNode' (ConstFloat v) = append $ show v
 showsNode' (ConstString v) = append $ "'" ++ v ++ "'"
 showsNode' (ConstNull) = append "NULL"
+
+showsNode' (StringNode s) = append s
+
+showsNode' (FuncCall names args orders filter _ _ _ _) = do
+    mapM_ showsNode' names
+    append "("
+    mapM_ showsNode' args
+    append ")"
 
 showsNode' (A_Expr exprType _ left right) = do
     showsNode' left
@@ -96,9 +101,18 @@ showsNode' (SelectStmnt targets from mWhere group) = do
     -- from clause
     if (length from) > 0
         then do
+            newline
             append "FROM "
             writeFroms from
             return ()
+        else return ()
+    if (length group) > 0
+        then do
+              newline
+              append "GROUP BY "
+              -- TODO
+              mapM_ showsNode' group
+              return ()
         else return ()
     when (isJust mWhere) $ do
                               append "WHERE"
@@ -116,14 +130,12 @@ showsNode' (SelectStmnt targets from mWhere group) = do
     writeTargets ni [x] = do
         showsNode' x
         when ni $ unindent >>= \_ -> return ()
-        newline
     writeFroms (x:y:zs) = do
         showsNode' x
         newline
         writeFroms (y:zs)
     writeFroms [x] = do
         showsNode' x
-        newline
 
 showsNode' nd = append $ "not implemented yet"
 
