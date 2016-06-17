@@ -30,6 +30,8 @@ tests = [("select a from b", "SELECT a\nFROM b"),
          ("select a.* from tab as a", "SELECT a.*\nFROM tab AS a"),
          ("select a.b, a.c from tab as a", "SELECT\n\ta.b,\n\ta.c\nFROM tab AS a"),
          ("select a from b where x = 1", "SELECT a\nFROM b\nWHERE\n\tx = 1"),
+         ("select a from b where x = 1 and y = 2", "SELECT a\nFROM b\nWHERE\n\tx = 1\n\tAND y = 2"),
+         ("select a from b where x = 1 and y = 2 or z = 3", "SELECT a\nFROM b\nWHERE\n\tx = 1\n\tAND y = 2\n\tOR z = 3"),
          ("select * from (select 1) t", "SELECT *\nFROM (\n\tSELECT 1\n) AS t")
         ]
 

@@ -104,6 +104,11 @@ parse' nd A_ConstTag = do
                   undefined
     return val
 
+parse' nd BoolExprTag = do
+  cboolType <- (#{peek BoolExpr, boolop} nd) :: (IO CInt)
+  let boolType = toEnum $ fromIntegral cboolType
+  expr <- (#{peek BoolExpr, args} nd) >>= nodeList
+  return $ BoolExpr boolType expr
 
 parse' nd JoinExprTag = do
     cjoinType <- (#{peek JoinExpr, jointype} nd) :: (IO CInt)

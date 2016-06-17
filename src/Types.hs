@@ -64,6 +64,9 @@ data Node =
     | ConstFloat Float
     | ConstString String
     | ConstNull
+    | BoolExpr
+        BoolExprType
+        [Node]
     | A_Star
     | RangeSubselect
         Bool           -- lateral
@@ -77,6 +80,15 @@ data Node =
     | Alias
         String -- name
         (Maybe Node)   -- List
+
+data BoolExprType = AND_EXPR | OR_EXPR | NOT_EXPR
+instance Enum BoolExprType where
+  fromEnum AND_EXPR = 0
+  fromEnum OR_EXPR = 1
+  fromEnum NOT_EXPR = 2
+  toEnum 0 = AND_EXPR
+  toEnum 1 = OR_EXPR
+  toEnum 2 = NOT_EXPR
 
 data NodeTag = ListTag
              | SelectStmntTag

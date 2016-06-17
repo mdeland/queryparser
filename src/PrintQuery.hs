@@ -39,12 +39,13 @@ unindent = State.state $ \(s, i) -> (i - 1, (s, i - 1))
 
 
 -- Format Helpers
-formatListNodes :: [Node] -> Bool -> String -> State.State Output ()
-formatListNodes (x:y:xs) shouldNewLine intersperse = do
+formatListNodes :: [Node] -> Bool -> (String, Bool) -> State.State Output ()
+formatListNodes (x:y:xs) shouldNewLine (intersperse, intersperseBefore) = do
     formatNode x
-    append intersperse
+    when intersperseBefore $ append intersperse
     when shouldNewLine newline
-    formatListNodes (y:xs) shouldNewLine intersperse
+    unless intersperseBefore $ append intersperse
+    formatListNodes (y:xs) shouldNewLine (intersperse, intersperseBefore)
 formatListNodes [x] _ _ = formatNode x
 formatListNodes [] _ _ = return ()
 
@@ -57,7 +58,7 @@ formatIndentedList nds intersperse = do
             newline
             return ()
         else append " "
-    formatListNodes nds True intersperse
+    formatListNodes nds True (intersperse, True)
     when needsIndent (CM.void unindent)
 
 
@@ -73,12 +74,21 @@ formatNode (SelectTarget mAlias val) = do
           append $ fromJust mAlias
           return ()
     return ()
-formatNode (ColumnRef names) = formatListNodes names False "."
+formatNode (ColumnRef names) = formatListNodes names False (".", True)
 
 formatNode (ConstInt v) = append $ show v
 formatNode (ConstFloat v) = append $ show v
 formatNode (ConstString v) = append $ "'" ++ v ++ "'"
 formatNode (ConstNull) = append "NULL"
+
+formatNode (BoolExpr booltype clauses) =
+    case booltype of
+      AND_EXPR -> formatListNodes clauses True ("AND ", False)
+      OR_EXPR -> formatListNodes clauses True ("OR ", False)
+      NOT_EXPR -> do
+        append "NOT "
+        formatListNodes clauses False ("", False)
+
 
 formatNode (StringNode s) = append s
 
