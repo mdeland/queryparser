@@ -13,30 +13,36 @@ import CApi
 
 
 formatQuery :: Node -> String
-formatQuery nd = fst $ snd $ State.runState (formatNode nd) ("", 0)
+formatQuery nd =  (\(a, _, _) -> a) $ snd $ State.runState (formatNode nd) ("", 0, False)
 
  -- State Helpers
-type Output = (String, Int)
+ -- (query string, tab indentation, nested expression)
+type Output = (String, Int, Bool)
 
 append :: String -> State.State Output ()
-append s = State.state $ \(s1, i) -> ((), (s1 ++ s, i))
+append s = State.state $ \(s1, i, n) -> ((), (s1 ++ s, i, n))
 
 newline :: State.State Output ()
-newline = State.state $ \(s, i) ->
+newline = State.state $ \(s, i, n) ->
     let lastC = last s
     in if lastC == '\t' || lastC == '\n'
-        then ((), (s, i))
-        else ((), (s ++ "\n" ++ rep i '\t', i))
+        then ((), (s, i, n))
+        else ((), (s ++ "\n" ++ rep i '\t', i, n))
   where
     rep :: Int -> Char -> String
     rep i c = fmap (const c) [1 .. i]
 
 indent :: State.State Output Int
-indent = State.state $ \(s, i) -> (i + 1, (s, i + 1))
+indent = State.state $ \(s, i, n) -> (i + 1, (s, i + 1, n))
 
 unindent :: State.State Output Int
-unindent = State.state $ \(s, i) -> (i - 1, (s, i - 1))
+unindent = State.state $ \(s, i, n) -> (i - 1, (s, i - 1, n))
 
+setNestExpression :: Bool -> State.State Output ()
+setNestExpression n = State.state $ \(s, i, _) -> ((), (s, i, n))
+
+getNestExpression :: State.State Output Bool
+getNestExpression = State.state $ \(s, i, n) -> (n, (s, i, n))
 
 -- Format Helpers
 formatListNodes :: [Node] -> Bool -> (String, Bool) -> State.State Output ()
@@ -48,6 +54,16 @@ formatListNodes (x:y:xs) shouldNewLine (intersperse, intersperseBefore) = do
     formatListNodes (y:xs) shouldNewLine (intersperse, intersperseBefore)
 formatListNodes [x] _ _ = formatNode x
 formatListNodes [] _ _ = return ()
+
+formatListOntoSeparateLines :: [Node] -> String -> State.State Output ()
+formatListOntoSeparateLines (x:y:xs) intersperse = do
+    formatNode x
+    newline
+    append intersperse
+    newline
+    formatListOntoSeparateLines (y:xs) intersperse
+formatListOntoSeparateLines [x] _ = formatNode x
+formatListOntoSeparateLines [] _ = return ()
 
 formatIndentedList :: [Node] -> String -> State.State Output ()
 formatIndentedList nds intersperse = do
@@ -81,13 +97,26 @@ formatNode (ConstFloat v) = append $ show v
 formatNode (ConstString v) = append $ "'" ++ v ++ "'"
 formatNode (ConstNull) = append "NULL"
 
-formatNode (BoolExpr booltype clauses) =
+formatNode (BoolExpr booltype clauses) = do
+    insideExpr <- getNestExpression
+    if not insideExpr
+      then setNestExpression True
+      else do
+              append "("
+              indent
+              newline
     case booltype of
-      AND_EXPR -> formatListNodes clauses True ("AND ", False)
-      OR_EXPR -> formatListNodes clauses True ("OR ", False)
+      AND_EXPR -> formatListOntoSeparateLines clauses "AND"
+      OR_EXPR -> formatListOntoSeparateLines clauses "OR"
       NOT_EXPR -> do
         append "NOT "
         formatListNodes clauses False ("", False)
+    if not insideExpr
+      then setNestExpression False
+      else do
+              unindent
+              newline
+              append ")"
 
 
 formatNode (StringNode s) = append s
@@ -98,9 +127,11 @@ formatNode (FuncCall names args orders filter _ _ _ _) = do
     mapM_ formatNode args
     append ")"
 
-formatNode (A_Expr exprType _ left right) = do
+formatNode (A_Expr exprType names left right) = do
     formatNode left
-    append " = "
+    append " "
+    formatNode names
+    append " "
     formatNode right
 
 formatNode (JoinExpr joinType left right mQuals _) = do
@@ -141,9 +172,8 @@ formatNode (RangeSubselect _ subq mAlias) = do
           return ()
 
 
-formatNode (SelectStmnt targets from mWhere group) = do
+formatNode (SelectStmnt targets from mWhere group mOffset mLimit) = do
     append "SELECT"
-    -- select columns
     formatIndentedList targets ","
 
     unless (null from) $ do
@@ -163,6 +193,18 @@ formatNode (SelectStmnt targets from mWhere group) = do
                                 newline
                                 mapM_ formatNode mWhere
                                 unindent
+                                return ()
+
+    when (isJust mLimit) $ do
+                                newline
+                                append "LIMIT "
+                                mapM_ formatNode mLimit
+                                return ()
+
+    when (isJust mOffset) $ do
+                                newline
+                                append "OFFSET "
+                                mapM_ formatNode mOffset
                                 return ()
 
 formatNode nd = append $ "not implemented yet"

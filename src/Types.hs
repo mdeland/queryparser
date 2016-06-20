@@ -21,13 +21,12 @@ data Node =
           [Node]           -- FromClause
           (Maybe Node)     -- WhereClause
           [Node]           -- Group
-
       -- HavingClause     -- HAVING conditional-expression
       -- [WindowClause]   -- WINDOW window_name AS (...), ... */
       -- [Value]
       -- [SortClause]
-      -- LimitOffset
-      -- LimitCount
+          (Maybe Node)    -- Limit Offset
+          (Maybe Node)    -- Limt Count
       -- [LockingClause]
       -- WithClause
       -- SetOperation op
@@ -73,7 +72,7 @@ data Node =
         Node           -- subquery
         (Maybe String) -- alias
     | A_Expr
-        Int -- type TODO enum this
+        AExprKind
         Node -- List
         Node -- Left
         Node -- Right
@@ -81,14 +80,15 @@ data Node =
         String -- name
         (Maybe Node)   -- List
 
+data AExprKind = OP | OP_ANY | OP_ALL | DISTINCT | NULLIF
+               | OF | IN | LIKE | ILIKE | SIMILAR | BETWEEN
+               | NOT_BETWEEN | BETWEEN_SYM | NOT_BETWEEN_SYM
+               | PAREN
+               deriving (Show, Enum)
+
+
 data BoolExprType = AND_EXPR | OR_EXPR | NOT_EXPR
-instance Enum BoolExprType where
-  fromEnum AND_EXPR = 0
-  fromEnum OR_EXPR = 1
-  fromEnum NOT_EXPR = 2
-  toEnum 0 = AND_EXPR
-  toEnum 1 = OR_EXPR
-  toEnum 2 = NOT_EXPR
+                  deriving (Show, Enum)
 
 data NodeTag = ListTag
              | SelectStmntTag

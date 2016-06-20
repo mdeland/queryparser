@@ -48,9 +48,11 @@ nodeMaybeString nd = if (nd /= nullPtr)
 
 parse :: Ptr CNode -> IO Node
 parse nd = do
-    let tag = c_nodeTag nd
-    debug (show tag)
-    parse' nd $ toEnum ( fromIntegral tag )
+    let tag = c_nodeTag nd :: CInt
+    let tp = toEnum (fromIntegral tag)
+    debug (show $ tp)
+    -- parse' nd $ toEnum ( fromIntegral tag )
+    parse' nd tp
 
 parse' :: Ptr CNode -> NodeTag -> IO Node
 parse' nd ListTag = do
@@ -72,8 +74,10 @@ parse' nd SelectStmntTag = do
     fromNode <- (#{peek SelectStmt, fromClause} nd) >>= nodeList
     whereNode <- (#{peek SelectStmt, whereClause} nd) >>= nodeMaybe
     groupNode <- (#{peek SelectStmt, groupClause} nd) >>= nodeList
+    offsetNode <- (#{peek SelectStmt, limitOffset} nd) >>= nodeMaybe
+    limitNode <- (#{peek SelectStmt, limitCount} nd) >>= nodeMaybe
 
-    return $ SelectStmnt targetNode fromNode whereNode groupNode
+    return $ SelectStmnt targetNode fromNode whereNode groupNode offsetNode limitNode
 
 parse' nd ResTargetTag = do
     debug "resTarget"
@@ -92,8 +96,8 @@ parse' nd StringTag = do
 
 parse' nd A_ConstTag = do
     let tag = c_constType nd
-    debug (show tag)
     let constType = toEnum ( fromIntegral tag )
+    debug (show constType)
     val <- case constType of
               IntegerTag -> return $ ConstInt $ fromIntegral $ c_constInt nd
               FloatTag -> fmap ConstFloat (read <$> peekCString (c_constStr nd))
@@ -107,6 +111,10 @@ parse' nd A_ConstTag = do
 parse' nd BoolExprTag = do
   cboolType <- (#{peek BoolExpr, boolop} nd) :: (IO CInt)
   let boolType = toEnum $ fromIntegral cboolType
+  debug $ "bool type: " ++ (show boolType)
+  cLoc <- (#{peek BoolExpr, location} nd) :: (IO CInt)
+  let loc = fromIntegral cLoc
+  debug $ "loc: " ++ (show loc)
   expr <- (#{peek BoolExpr, args} nd) >>= nodeList
   return $ BoolExpr boolType expr
 
@@ -165,10 +173,15 @@ parse' nd RangeVarTag = do
 
 parse' nd A_ExprTag = do
     debug "expr"
-    kind <- (#{peek A_Expr, kind} nd)
+
+  -- cboolType <- (#{peek BoolExpr, boolop} nd) :: (IO CInt)
+  -- let boolType = toEnum $ fromIntegral cboolType
+    ckind <- (#{peek A_Expr, kind} nd) :: (IO CInt)
+    let kind = toEnum $ fromIntegral ckind
     nameNode <- (#{peek A_Expr, name} nd)
     leftNode <- (#{peek A_Expr, lexpr} nd)
     rightNode <- (#{peek A_Expr, rexpr} nd)
+    debug $ "expr type:" ++ (show kind)
     name <- parse nameNode
     left <- parse leftNode
     right <- parse rightNode
