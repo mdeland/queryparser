@@ -12,37 +12,48 @@ import Types
 import CApi
 
 
-formatQuery :: Node -> String
-formatQuery nd =  (\(a, _, _) -> a) $ snd $ State.runState (formatNode nd) ("", 0, False)
+formatQuery :: Node -> [CommentData] -> String
+formatQuery nd cd =  (\(a, _, _, _) -> a) $ snd $ State.runState (formatNode nd) ("", 0, False, cd)
 
  -- State Helpers
  -- (query string, tab indentation, nested expression)
-type Output = (String, Int, Bool)
+type Output = (String, Int, Bool, [CommentData])
 
 append :: String -> State.State Output ()
-append s = State.state $ \(s1, i, n) -> ((), (s1 ++ s, i, n))
+append s = State.state $ \(s1, i, n, cd) ->
+     case cd of
+         (CommentData (c, commentLoc) : others) | ((length (s1 ++ s)) >= commentLoc) ->
+            ((), (s1 ++ c ++ s, i, n, others))
+         _ -> ((), (s1 ++ s, i, n, cd))
 
 newline :: State.State Output ()
-newline = State.state $ \(s, i, n) ->
+newline = State.state $ \(s, i, n, cd) ->
     let lastC = last s
     in if lastC == '\t' || lastC == '\n'
-        then ((), (s, i, n))
-        else ((), (s ++ "\n" ++ rep i '\t', i, n))
+        then ((), (s, i, n, cd))
+        else ((), (s ++ "\n" ++ rep i '\t', i, n, cd))
   where
     rep :: Int -> Char -> String
     rep i c = fmap (const c) [1 .. i]
 
 indent :: State.State Output Int
-indent = State.state $ \(s, i, n) -> (i + 1, (s, i + 1, n))
+indent = State.state $ \(s, i, n, cd) -> (i + 1, (s, i + 1, n, cd))
 
 unindent :: State.State Output Int
-unindent = State.state $ \(s, i, n) -> (i - 1, (s, i - 1, n))
+unindent = State.state $ \(s, i, n, cd) -> (i - 1, (s, i - 1, n, cd))
 
 setNestExpression :: Bool -> State.State Output ()
-setNestExpression n = State.state $ \(s, i, _) -> ((), (s, i, n))
+setNestExpression n = State.state $ \(s, i, _, cd) -> ((), (s, i, n, cd))
 
 getNestExpression :: State.State Output Bool
-getNestExpression = State.state $ \(s, i, n) -> (n, (s, i, n))
+getNestExpression = State.state $ \(s, i, n, cd) -> (n, (s, i, n, cd))
+
+-- maybeAddComment :: Location -> State.State Output ()
+-- maybeAddComment (Location loc) = State.state $ \(s, i, n, cd) ->
+--     case cd of
+--         (CommentData (c, commentLoc) : others) | (loc > commentLoc) -> ((), (s ++ c, i, n, others))
+--         _ -> ((), (s, i, n, cd))
+
 
 -- Format Helpers
 formatListNodes :: [Node] -> Bool -> (String, Bool) -> State.State Output ()
@@ -83,7 +94,7 @@ formatNode (NodeList nds) = do
     mapM_ formatNode nds
     return ()
 formatNode UnhandledNode = append "UNHANDLED"
-formatNode (SelectTarget mAlias val) = do
+formatNode (ResTarget mAlias val _) = do
     formatNode val
     when (isJust mAlias) $ do
           append " AS "
@@ -92,10 +103,18 @@ formatNode (SelectTarget mAlias val) = do
     return ()
 formatNode (ColumnRef names) = formatListNodes names False (".", True)
 
-formatNode (ConstInt v) = append $ show v
-formatNode (ConstFloat v) = append $ show v
-formatNode (ConstString v) = append $ "'" ++ v ++ "'"
-formatNode (ConstNull) = append "NULL"
+formatNode (ConstInt v loc) = do
+    append $ show v
+    -- maybeAddComment loc
+formatNode (ConstFloat v loc) = do
+    append $ show v
+    -- maybeAddComment loc
+formatNode (ConstString v loc) = do
+    append $ "'" ++ v ++ "'"
+    -- maybeAddComment loc
+formatNode (ConstNull loc) = do
+    append "NULL"
+    -- maybeAddComment loc
 
 formatNode (BoolExpr booltype clauses) = do
     insideExpr <- getNestExpression
@@ -121,7 +140,7 @@ formatNode (BoolExpr booltype clauses) = do
 
 formatNode (StringNode s) = append s
 
-formatNode (FuncCall names args orders filter _ _ _ _) = do
+formatNode (FuncCall names args orders filter _ _ _ _ _) = do
     mapM_ formatNode names
     append "("
     mapM_ formatNode args

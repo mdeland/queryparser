@@ -45,6 +45,9 @@ nodeMaybeString nd = if (nd /= nullPtr)
                         then Just <$> peekCString nd
                         else return Nothing
 
+nodeInt :: IO CInt -> IO Int
+nodeInt = fmap fromIntegral
+
 
 parse :: Ptr CNode -> IO Node
 parse nd = do
@@ -83,8 +86,11 @@ parse' nd ResTargetTag = do
     debug "resTarget"
     name <- (#{peek ResTarget, name} nd) >>= nodeMaybeString
     val <- (#{peek ResTarget, val} nd) >>= parse
+    loc <- nodeInt $ (#{peek ResTarget, location} nd)
+
     -- TODO will this always return a SelectTarget?
-    return $ SelectTarget name val
+
+    return $ ResTarget name val (Location loc)
 
 parse' nd ColumnRefTag = do
     fieldsNode <- (#{peek ColumnRef, fields} nd) >>= nodeList
@@ -97,12 +103,21 @@ parse' nd StringTag = do
 parse' nd A_ConstTag = do
     let tag = c_constType nd
     let constType = toEnum ( fromIntegral tag )
+    debug "const"
     debug (show constType)
+
+    iloc <- nodeInt $ (#{peek A_Const, location} nd)
+    debug (show iloc)
+    let loc = Location iloc
     val <- case constType of
-              IntegerTag -> return $ ConstInt $ fromIntegral $ c_constInt nd
-              FloatTag -> fmap ConstFloat (read <$> peekCString (c_constStr nd))
-              StringTag -> ConstString <$> peekCString (c_constStr nd)
-              NullTag -> return ConstNull
+              IntegerTag -> return $ ConstInt (fromIntegral $ c_constInt nd) loc
+              FloatTag -> do
+                  fl <- (read <$> peekCString (c_constStr nd))
+                  return $ ConstFloat fl loc
+              StringTag -> do
+                  s <- peekCString (c_constStr nd)
+                  return $ ConstString s loc
+              NullTag -> return $ ConstNull loc
               _ -> do
                   debug $ (show tag) ++ " in const not handled"
                   undefined
@@ -142,8 +157,10 @@ parse' nd FuncCallTag = do
     aggStar <- (#{peek FuncCall, agg_star} nd)             -- bool
     aggDistinct <- (#{peek FuncCall, agg_distinct} nd)     -- bool
     variadic <- (#{peek FuncCall, func_variadic} nd)       -- bool
+    loc <- nodeInt $ (#{peek ResTarget, location} nd)
     -- TODO WindowDef
-    return $ FuncCall funcName args aggOrder aggFilter withinGroup aggStar aggDistinct variadic
+    return $ FuncCall funcName args aggOrder aggFilter
+                      withinGroup aggStar aggDistinct variadic (Location loc)
 
 parse' nd A_StarTag = return A_Star
 
@@ -204,19 +221,19 @@ extractList :: Node -> [Node]
 extractList (NodeList nd) = nd
 extractList _ = trace "extractList undefined" $ undefined
 
-runParse :: String -> IO String
-runParse s1 = do
+runParse :: String -> [CommentData] -> IO String
+runParse s1 cd = do
     c_MemoryContextInit
     useAsCString (pack s1) $ \s -> do
         let nd = c_raw_parser s
         p <- parse nd
-        let parsed = formatQuery p
+        let parsed = formatQuery p cd
         return parsed
 
 parseIt :: String -> IO ()
 parseIt s1 = do
     print s1
-    parsed <- runParse s1
+    parsed <- runParse s1 []
     putStrLn $ parsed
     print parsed
     print "done"

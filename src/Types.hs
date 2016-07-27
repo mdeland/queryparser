@@ -7,6 +7,10 @@ import qualified Data.List as L
 import Data.Maybe
 import CApi
 
+newtype Location = Location Int
+
+data CommentData = CommentData (String, Int)
+
 data Node =
     UnhandledNode
     | NodeList [Node]
@@ -49,9 +53,10 @@ data Node =
         Bool -- star
         Bool -- distinct
         Bool -- variadic
+        Location
         -- TODO windowdef
       -- These are TableColumn
-    | SelectTarget (Maybe String) Node
+    | ResTarget (Maybe String) Node Location
     | ColumnRef [Node]
     | TableRef
         (Maybe String) -- db
@@ -59,10 +64,10 @@ data Node =
         (Maybe String) -- table
         (Maybe String)   -- alias
     | StringNode String
-    | ConstInt Int
-    | ConstFloat Float
-    | ConstString String
-    | ConstNull
+    | ConstInt Int Location
+    | ConstFloat Float Location
+    | ConstString String Location
+    | ConstNull Location
     | BoolExpr
         BoolExprType
         [Node]
