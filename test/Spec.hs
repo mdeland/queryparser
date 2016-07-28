@@ -1,11 +1,18 @@
 import System.Console.ANSI
 import Parse
 import Types
+import Extract
+import PrintQuery
 
 
-runTest :: (String, [CommentData], String) -> IO ()
-runTest (q, cd, exp) = do
-    res <- runParse q cd
+import qualified Data.HashSet as HS
+import Data.List
+
+
+runFormatTest :: (String, [CommentData], String) -> IO ()
+runFormatTest (q, cd, exp) = do
+    p <- runParse q
+    let res = formatQuery p cd
     if res == exp
         then do
                 setSGR [SetColor Foreground Vivid Green]
@@ -19,8 +26,8 @@ runTest (q, cd, exp) = do
                 putStrLn $ "received: " ++ res
                 setSGR [Reset]
 
-tests :: [(String, [CommentData], String)]
-tests = [
+formatTests :: [(String, [CommentData], String)]
+formatTests = [
         -- basic
          ("select a from b", [], "SELECT a\nFROM b"),
          ("\n\n\nselect \n\n\n\n1\n\n\n", [], "SELECT 1"),
@@ -49,13 +56,39 @@ tests = [
         -- limit and offset
          ("select * from tab limit 10 offset 7", [], "SELECT *\nFROM tab\nLIMIT 10\nOFFSET 7"),
         -- inner select
-         ("select * from (select 1) t", [], "SELECT *\nFROM (\n\tSELECT 1\n) AS t"),
+         ("select * from (select 1) t", [], "SELECT *\nFROM (\n\tSELECT 1\n) AS t")
         -- comment
-         ("select 1  --comment\nfrom t", [CommentData ("--comment", 10)],
-            "SELECT 1 --comment\nFROM t")
+         -- ("select 1  --comment\nfrom t", [CommentData ("--comment", 10)],
+         --    "SELECT 1 --comment\nFROM t")
         ]
+
+runTableExtractTest :: (String, [String]) -> IO ()
+runTableExtractTest (q, exp) = do
+    p <- runParse q
+    let res = extractTables p
+    if res == HS.fromList exp
+        then do
+                setSGR [SetColor Foreground Vivid Green]
+                putStrLn "Passed"
+                setSGR [Reset]
+        else do
+                setSGR [SetColor Foreground Vivid Red]
+                putStrLn "Failed: "
+                putStrLn $ "query   : " ++ q
+                putStrLn $ "expected: " ++ (unwords exp)
+                putStrLn $ "received: " ++ (unwords $ HS.toList res)
+                setSGR [Reset]
+
+tableExtractTests =
+    [ ("select * from a", ["a"])
+    , ("select * from a, b", ["a", "b"])
+    , ("select * from a join b on a.x = b.y", ["a", "b"])
+    , ("select * from s.a join t.b on a.x = b.y", ["s.a", "t.b"])
+    , ("select * from (select * from a) x", ["a"])
+    ]
+
 
 main :: IO ()
 main = do
-    print ""
-    mapM_ runTest tests
+    -- mapM_ runFormatTest formatTests
+    mapM_ runTableExtractTest tableExtractTests

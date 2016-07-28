@@ -221,19 +221,20 @@ extractList :: Node -> [Node]
 extractList (NodeList nd) = nd
 extractList _ = trace "extractList undefined" $ undefined
 
-runParse :: String -> [CommentData] -> IO String
-runParse s1 cd = do
+runParse :: String -> IO Node
+runParse s1 = do
     c_MemoryContextInit
     useAsCString (pack s1) $ \s -> do
         let nd = c_raw_parser s
-        p <- parse nd
-        let parsed = formatQuery p cd
-        return parsed
+        parse nd
+        -- let parsed = formatQuery p cd
+        -- return parsed
 
 parseIt :: String -> IO ()
 parseIt s1 = do
     print s1
-    parsed <- runParse s1 []
+    p <- runParse s1
+    let parsed = formatQuery p []
     putStrLn $ parsed
     print parsed
     print "done"
